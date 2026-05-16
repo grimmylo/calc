@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Прототип калькулятора доставки</title>
+  <style>
+    :root { --blue:#1a73e8; --border:#e0e0e0; --bg:#fff; --text:#1f2937; }
+    body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}
+    .container{max-width:1280px;margin:24px auto;padding:0 16px}
+    .tabs{display:flex;gap:10px;margin-bottom:18px}
+    .tab{padding:10px 16px;border:1px solid var(--border);background:#f8fafc;border-radius:8px;cursor:pointer}
+    .tab.active{background:var(--blue);color:#fff;border-color:var(--blue)}
+    .role{display:none}.role.active{display:block}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+    .card{border:1px solid var(--border);border-radius:10px;padding:16px;background:#fff}
+    h2,h3{margin:0 0 10px}
+    .field{margin-bottom:12px}.field label{display:block;font-size:13px;margin-bottom:6px}
+    input,select,button{font:inherit}
+    input[type="text"],input[type="number"],select{width:100%;padding:9px;border:1px solid var(--border);border-radius:8px}
+    .muted{font-size:12px;color:#6b7280}
+    .dims{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+    .place{border:1px dashed var(--border);padding:10px;border-radius:8px;margin-bottom:10px}
+    .services{columns:2}
+    .service-row{break-inside:avoid;display:flex;align-items:center;gap:8px;margin:7px 0}
+    .btn{background:var(--blue);color:#fff;border:0;padding:11px 18px;border-radius:8px;cursor:pointer}
+    .btn.secondary{background:#fff;color:var(--blue);border:1px solid var(--blue)}
+    .center{text-align:center}
+    .result-total{font-size:34px;color:var(--blue);font-weight:700}
+    table{width:100%;border-collapse:collapse;font-size:13px}
+    th,td{border:1px solid var(--border);padding:8px;text-align:left}
+    th{background:#f8fafc}
+    .admin{display:grid;grid-template-columns:260px 1fr;gap:16px}
+    .menu button{display:block;width:100%;text-align:left;margin-bottom:8px}
+    .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center}
+    .modal{width:560px;max-width:95vw;background:#fff;border-radius:10px;padding:16px}
+    .open{display:flex}
+    .hidden{display:none}
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="tabs">
+    <button class="tab active" data-role="client">👤 Клиент</button>
+    <button class="tab" data-role="manager">👔 Менеджер</button>
+    <button class="tab" data-role="admin">⚙️ Администратор</button>
+  </div>
+
+  <section id="client" class="role active"></section>
+  <section id="manager" class="role"></section>
+  <section id="admin" class="role"></section>
+</div>
+<div id="modalWrap" class="modal-backdrop"><div class="modal" id="modal"></div></div>
+<script>
+const DB={
+ cities:[['MSK','Москва'],['SPB','Санкт-Петербург'],['NSK','Новосибирск'],['EKB','Екатеринбург'],['SUD','Судак'],['FEO','Феодосия'],['YAL','Ялта']].map(([code,name],i)=>({id:i+1,code,search_name:name.toLowerCase(),display_name:name,region:'РФ',active:true})),
+ terminals:[{id:1,city:'MSK',name:'Москва-Юг',address:'Москва, Промзона 1',main:true,maxW:2000,maxL:6},{id:2,city:'MSK',name:'Москва-Север',address:'Москва, Северная 7',main:false,maxW:1000,maxL:4},{id:3,city:'SPB',name:'СПб-Центр',address:'СПб, Лиговский 12',main:true,maxW:1000,maxL:4},{id:4,city:'NSK',name:'НСК-Главный',address:'Новосибирск, Логистическая 5',main:true,maxW:2000,maxL:6},{id:5,city:'EKB',name:'ЕКБ-Кольцово',address:'Екатеринбург, Кольцово',main:true,maxW:1500,maxL:5},{id:6,city:'SUD',name:'Судак-Склад',address:'Судак, Складская 4',main:true,maxW:1000,maxL:4},{id:7,city:'FEO',name:'Феодосия-Склад',address:'Феодосия, Портовая 2',main:true,maxW:1000,maxL:4},{id:8,city:'YAL',name:'Ялта-Склад',address:'Ялта, Южная 8',main:true,maxW:1000,maxL:4}],
+ tariffs:{'MSK-SPB':{density:270,min:550,rows:[{t:'FIXED',w:1,v:0.01,f:350},{t:'FIXED',w:5,v:0.03,f:400},{t:'CALC',w:250,v:1,kg:14.9,m3:4023},{t:'CALC',w:750,v:3,kg:14.2,m3:3834},{t:'CALC',w:1250,v:5,kg:14,m3:3780},{t:'CALC',w:2500,v:10,kg:13.6,m3:3672},{t:'CALC',w:5000,v:20,kg:13.2,m3:3564},{t:'CALC',w:10000,v:40,kg:13,m3:3510},{t:'CALC',w:20000,v:90,kg:12.5,m3:3375}]},
+ 'MSK-SUD':{density:280,min:1000,rows:[{t:'FIXED',w:1,v:.01,f:1000},{t:'FIXED',w:5,v:.03,f:1000},{t:'CALC',w:250,v:1,kg:32.6,m3:9128},{t:'CALC',w:750,v:3,kg:32.2,m3:9016},{t:'CALC',w:1250,v:5,kg:31.8,m3:8904}]},
+ 'MSK-NSK':{density:200,min:800,rows:[{t:'FIXED',w:1,v:.01,f:450},{t:'FIXED',w:5,v:.03,f:550},{t:'CALC',w:250,v:1,kg:32.5,m3:6500},{t:'CALC',w:750,v:3,kg:31.9,m3:6380},{t:'CALC',w:1250,v:5,kg:31.2,m3:6240}]}
+ },
+ sla:{'MSK-SPB':1,'MSK-NSK':5,'MSK-SUD':4,'MSK-EKB':3},
+ cfg:{volumeCoef:1.1,declaredRate:0.2,declaredPerKg:400},
+ surcharge:[{code:'HEAVY_1000',th:'>=1000кг',pct:25,fn:p=>p.w>=1000},{code:'OVERSIZE_3M',th:'>3м',pct:30,fn:p=>p.l>3},{code:'OVERSIZE_6M',th:'>6м',pct:50,fn:p=>p.l>6}],
+ transfer:[{city:'SPB',from:'СПб-Центр',to:'СПб-Шушары',m3:390,kg:1.5,min:390},{city:'MSK',from:'Москва-Юг',to:'Москва-Север',m3:150,kg:.6,min:150}],
+ doorMSK:[{w:5,v:.1,p:500},{w:40,v:.2,p:1100},{w:60,v:.3,p:1300},{w:100,v:.5,p:1500},{w:150,v:.7,p:1800},{w:250,v:1,p:2000},{w:350,v:1.5,p:2200},{w:500,v:2,p:2400},{w:750,v:3,p:3100},{w:1000,v:4,p:3500},{w:1250,v:6,p:4000},{w:1500,v:8,p:4300},{w:2000,v:12,p:6300},{w:2500,v:14,p:7400},{w:3000,v:16,p:7800},{w:5000,v:30,p:9500},{w:7000,v:35,p:16000},{w:10000,v:40,p:16500},{w:20000,v:86,p:25000}]
+};
+const state={role:'client',forms:{client:{places:[{w:0,l:0,b:0,h:0}],services:{}},manager:{places:[{w:0,l:0,b:0,h:0}],services:{}}},adminSection:'cities'};
+const cityOptions=DB.cities.map(c=>`<option value="${c.display_name}"></option>`).join('');
+function cityCodeByName(n){return (DB.cities.find(c=>c.display_name===n)||{}).code}
+function termsByCity(code){return DB.terminals.filter(t=>t.city===code)}
+function renderCalc(role){const f=state.forms[role]; return `<div class="grid"><div class="card">
+<h3>Данные отправки</h3><datalist id="cities">${cityOptions}</datalist>
+<div class='field'><label>Город отправления</label><input list='cities' id='${role}_from' value='Москва'></div>
+<div class='field'><label>Город назначения</label><input list='cities' id='${role}_to' value='Санкт-Петербург'></div>
+<div class='field'><label>Терминал отправления</label><select id='${role}_from_term'></select></div>
+<div class='field'><label>Терминал назначения</label><select id='${role}_to_term'></select></div>
+<div id='${role}_places'></div><button class='btn secondary' onclick="addPlace('${role}')">+ Добавить место</button>
+<div class='field'><label>Оценочная стоимость (руб)</label><input type='number' id='${role}_declared' placeholder='необязательно'></div>
+<h3>Дополнительные услуги</h3><div class='services'>${['insurance','pack_hard','pack_soft','pack_pallet','pickup','delivery','out_city','docs','storage'].map(k=>`<label class='service-row'><input type='checkbox' id='${role}_${k}'> ${({insurance:'Страхование груза',pack_hard:'Упаковка жёсткая',pack_soft:'Упаковка мягкая',pack_pallet:'Паллетный борт',pickup:'Забор от двери',delivery:'Доставка до двери',out_city:'Выезд за пределы города',docs:'Возврат документов',storage:'Сверхнормативное хранение'}[k])}</label>`).join('')}
+<div id='${role}_storage_days' class='hidden'>дней: <input type='number' id='${role}_days' value='3'></div>
+<div id='${role}_out_km' class='hidden'>Расстояние (км): <input type='number' id='${role}_km' value='10'></div>
+<div id='${role}_zones' class='hidden'>Зона: <select id='${role}_pickup_zone'><option>МКАД</option><option>ТТК</option><option>Садовое кольцо</option></select> / <select id='${role}_delivery_zone'><option>МКАД</option><option>ТТК</option><option>Садовое кольцо</option></select></div></div>
+<div class='center' style='margin-top:16px'><button class='btn' onclick="calc('${role}')">РАССЧИТАТЬ</button></div>
+</div><div class='card' id='${role}_result'><h3>Результат</h3><p class='muted'>Нажмите «Рассчитать».</p></div></div>`}
+function renderPlaces(role){const w=document.getElementById(role+'_places'); const places=state.forms[role].places; w.innerHTML=places.map((p,i)=>`<div class='place'><b>Место ${i+1}</b><div class='field'><label>Вес (кг)</label><input type='number' id='${role}_w_${i}' value='${p.w||""}'></div><div class='muted'>Или укажите габариты:</div><div class='dims'><input type='number' id='${role}_l_${i}' placeholder='Длина (м)' value='${p.l||""}'><input type='number' id='${role}_b_${i}' placeholder='Ширина (м)' value='${p.b||""}'><input type='number' id='${role}_h_${i}' placeholder='Высота (м)' value='${p.h||""}'></div></div>`).join('');}
+function addPlace(role){if(state.forms[role].places.length<5){state.forms[role].places.push({});renderPlaces(role);}}
+function setupCalc(role){document.getElementById(role).innerHTML=renderCalc(role); renderPlaces(role); bindTerms(role);
+ ['storage','out_city'].forEach(k=>document.getElementById(`${role}_${k}`).onchange=e=>document.getElementById(`${role}_${k==='storage'?'storage_days':'out_km'}`).classList.toggle('hidden',!e.target.checked));
+ if(role==='manager'){document.getElementById(`${role}_pickup`).onchange=e=>document.getElementById(`${role}_zones`).classList.toggle('hidden',!(e.target.checked||document.getElementById(`${role}_delivery`).checked)); document.getElementById(`${role}_delivery`).onchange=document.getElementById(`${role}_pickup`).onchange;}
+}
+function bindTerms(role){const from=document.getElementById(role+'_from'),to=document.getElementById(role+'_to'); const rf=()=>{const fc=cityCodeByName(from.value),tc=cityCodeByName(to.value);const fs=termsByCity(fc),ts=termsByCity(tc); document.getElementById(role+'_from_term').innerHTML=fs.map(t=>`<option ${t.main?'selected':''}>${t.name}</option>`).join('');document.getElementById(role+'_to_term').innerHTML=ts.map(t=>`<option ${t.main?'selected':''}>${t.name}</option>`).join('');}; from.oninput=to.oninput=rf;rf();}
+function calc(role){const fromC=cityCodeByName(document.getElementById(role+'_from').value),toC=cityCodeByName(document.getElementById(role+'_to').value); const pair=DB.tariffs[`${fromC}-${toC}`]; if(!pair){document.getElementById(role+'_result').innerHTML='<h3>Результат</h3>Нет тарифа';return}
+ const places=state.forms[role].places.map((_,i)=>{const w=+document.getElementById(`${role}_w_${i}`).value||0,l=+document.getElementById(`${role}_l_${i}`).value||0,b=+document.getElementById(`${role}_b_${i}`).value||0,h=+document.getElementById(`${role}_h_${i}`).value||0,v=l*b*h||0; return {w,l,b,h,v}});
+ let w=places.reduce((s,p)=>s+p.w,0),v=places.reduce((s,p)=>s+p.v,0); if(places.length>=2)v*=DB.cfg.volumeCoef;
+ if(document.getElementById(role+'_pack_hard').checked){v*=1.3;w+=v*30}
+ if(document.getElementById(role+'_pack_pallet').checked){v*=1.25;w+=v*68}
+ const fixed=pair.rows.find(r=>r.t==='FIXED'&&w<=r.w&&v<=r.v); let base=0,basis='';
+ if(fixed){base=fixed.f;basis='fixed'} else {const row=pair.rows.find(r=>r.t==='CALC'&&w<=r.w&&v<=r.v)||pair.rows[pair.rows.length-1];const dens=w/(v||1);const byVol=dens<pair.density;base=byVol?v*row.m3:w*row.kg;basis=byVol?'по объёму':'по весу';}
+ const beforeMin=base; base=Math.max(base,pair.min);
+ let surchargeTotal=0; places.forEach(p=>{const m=DB.surcharge.filter(s=>s.fn(p)).sort((a,b)=>b.pct-a.pct)[0]; if(m) surchargeTotal += (base*(p.w/(w||1)))*(m.pct/100)});
+ const declared=(+document.getElementById(role+'_declared').value)||w*DB.cfg.declaredPerKg;
+ const ins = declared*DB.cfg.declaredRate/100;
+ let extra=[['Наценка оценочной стоимости (0.2%)',ins]];
+ if(document.getElementById(role+'_insurance').checked) extra=[['Страхование',Math.max(ins,40)]];
+ if(document.getElementById(role+'_pickup').checked) extra.push(['Забор от двери',doorPrice(w,v)]);
+ if(document.getElementById(role+'_delivery').checked) extra.push(['Доставка до двери',doorPrice(w,v)]);
+ if(document.getElementById(role+'_out_city').checked) extra.push([`Выезд за город (${+document.getElementById(role+'_km').value||0} км)`,(+document.getElementById(role+'_km').value||0)*45]);
+ if(document.getElementById(role+'_docs').checked) extra.push(['Возврат документов',300]);
+ if(document.getElementById(role+'_storage').checked) extra.push(['Сверхнормативное хранение',Math.max(200,v*100)*(+document.getElementById(role+'_days').value||3)]);
+ if(document.getElementById(role+'_pack_hard').checked) extra.push(['Упаковка жёсткая',Math.max(990,v*2090)]);
+ if(document.getElementById(role+'_pack_soft').checked) extra.push(['Упаковка мягкая',Math.max(300,v*300)]);
+ if(document.getElementById(role+'_pack_pallet').checked) extra.push(['Паллетный борт',Math.max(800,v*1800)]);
+ let transfer=0; const toTerm=document.getElementById(role+'_to_term').value; const term=DB.terminals.find(t=>t.name===toTerm); if(term && !term.main){const tr=DB.transfer.find(t=>t.city===term.city); if(tr)transfer=Math.max(tr.min,v*tr.m3,w*tr.kg)}
+ const total=base+surchargeTotal+transfer+extra.reduce((s,x)=>s+x[1],0); const sla=DB.sla[`${fromC}-${toC}`]||2;
+ document.getElementById(role+'_result').innerHTML=`<h3>Результат</h3><div class='result-total'>${fmt(total)} ₽</div><p>Срок доставки: <b>${sla} рабочих дней</b></p><table><tr><td>Базовая перевозка</td><td>${fmt(beforeMin)} ₽ (${basis})</td></tr><tr><td>Плотность груза</td><td>${(w/(v||1)).toFixed(1)} кг/м³ (порог: ${pair.density})</td></tr><tr><td>Мин. цена направления</td><td>${base>beforeMin?'применена':'не применена'}</td></tr><tr><td>Надбавки</td><td>${fmt(surchargeTotal)} ₽</td></tr>${extra.map(x=>`<tr><td>${x[0]}</td><td>${fmt(x[1])} ₽</td></tr>`).join('')}<tr><td>Межтерминальный трансфер</td><td>${fmt(transfer)} ₽</td></tr><tr><td><b>ИТОГО</b></td><td><b>${fmt(total)} ₽</b></td></tr></table>`;
+}
+function doorPrice(w,v){return (DB.doorMSK.find(r=>w<=r.w&&v<=r.v)||DB.doorMSK[DB.doorMSK.length-1]).p}
+function fmt(n){return Math.round(n).toLocaleString('ru-RU')}
+function renderAdmin(){const sec=state.adminSection; const menu=['cities','zones','tariffs','special','surcharges','transfer','services','sla','settings']; const name={cities:'Города и терминалы',zones:'Тарифные зоны',tariffs:'Тарифы',special:'Особые тарифы',surcharges:'Надбавки',transfer:'Трансфер',services:'Услуги',sla:'Сроки доставки',settings:'Настройки'};
+ document.getElementById('admin').innerHTML=`<div class='admin'><div class='menu card'>${menu.map(m=>`<button class='btn ${m===sec?'':'secondary'}' onclick="state.adminSection='${m}';renderAdmin()">${name[m]}</button>`).join('')}</div><div class='card'>${adminSection(sec)}</div></div>`}
+function adminSection(s){if(s==='cities')return `<h3>Города и терминалы</h3><button class='btn' onclick="openModal('Добавить город')">+ Добавить город</button><table><tr><th>ID</th><th>Название</th><th>Код</th><th>Регион</th><th>Активен</th></tr>${DB.cities.map(c=>`<tr><td>${c.id}</td><td>${c.display_name}</td><td>${c.code}</td><td>${c.region}</td><td>${c.active?'Да':'Нет'}</td></tr>`).join('')}</table><br><button class='btn' onclick="openModal('Добавить терминал')">+ Добавить терминал</button><table><tr><th>ID</th><th>Город</th><th>Название</th><th>Адрес</th><th>Основной</th><th>Макс.вес</th><th>Макс.длина</th></tr>${DB.terminals.map(t=>`<tr><td>${t.id}</td><td>${t.city}</td><td>${t.name}</td><td>${t.address}</td><td>${t.main?'Да':'Нет'}</td><td>${t.maxW}</td><td>${t.maxL}</td></tr>`).join('')}</table>`;
+ if(s==='zones')return `<h3>Тарифные зоны</h3><button class='btn' onclick="openModal('Создать зону')">+ Создать зону</button><table><tr><th>ID</th><th>Название</th><th>Код</th><th>Города</th></tr>${DB.cities.map(c=>`<tr><td>${c.id}</td><td>${c.display_name}</td><td>${c.code}</td><td>${c.display_name}</td></tr>`).join('')}</table>`;
+ if(s==='tariffs')return `<h3>Тарифы</h3><select><option>Москва</option></select> <select><option>Санкт-Петербург</option></select><table><tr><th>Откуда</th><th>Куда</th><th>Сезон</th><th>Плотность</th><th>Мин.цена</th></tr>${Object.entries(DB.tariffs).map(([k,v])=>`<tr><td>${k.split('-')[0]}</td><td>${k.split('-')[1]}</td><td>Базовый</td><td>${v.density}</td><td>${v.min}</td></tr>${v.rows.map(r=>`<tr><td colspan='5'>${r.t} | до ${r.w} кг / ${r.v} м³ ${r.f?`| ${r.f}₽`:`| ${r.kg}/кг ${r.m3}/м³`}</td></tr>`).join('')}`).join('')}</table>`;
+ if(s==='special')return `<h3>Особые тарифы</h3><button class='btn' onclick="openModal('Добавить спецтариф')">+ Добавить</button><table><tr><th>Тип</th><th>Откуда</th><th>Куда</th><th>Мин.цена</th><th>Приоритет</th></tr><tr><td>Город→Город</td><td>Москва</td><td>Судак</td><td>1000</td><td>1</td></tr><tr><td>Город→Зона</td><td>Москва</td><td>Крым</td><td>1200</td><td>2</td></tr></table>`;
+ if(s==='surcharges')return `<h3>Надбавки</h3><button class='btn' onclick="openModal('Добавить надбавку')">+ Добавить</button><table><tr><th>Код</th><th>Название</th><th>Условие</th><th>Порог</th><th>Процент</th></tr><tr><td>HEAVY_1000</td><td>Тяжеловес</td><td>вес места</td><td>1000</td><td>25%</td></tr><tr><td>OVERSIZE_3M</td><td>Негабарит</td><td>длина места</td><td>3</td><td>30%</td></tr></table>`;
+ if(s==='transfer')return `<h3>Трансфер</h3><table><tr><th>Город</th><th>От терминала</th><th>До терминала</th><th>Цена/м³</th><th>Цена/кг</th><th>Мин.цена</th></tr>${DB.transfer.map(t=>`<tr><td>${t.city}</td><td>${t.from}</td><td>${t.to}</td><td>${t.m3}</td><td>${t.kg}</td><td>${t.min}</td></tr>`).join('')}</table>`;
+ if(s==='services')return `<h3>Услуги</h3><table><tr><th>Код</th><th>Название</th><th>Категория</th><th>Метод</th><th>Ставка</th><th>Мин.</th></tr><tr><td>INSURANCE</td><td>Страхование</td><td>Фин.</td><td>PERCENT_DECLARED</td><td>0.2%</td><td>40</td></tr><tr><td>DOOR_SERVICE</td><td>Доставка от/до двери</td><td>Логистика</td><td>TIERED_BY_CITY</td><td>MSK grid</td><td>-</td></tr></table><h4>Тарифная сетка DOOR_SERVICE (Москва)</h4><table><tr><th>до кг</th><th>до м³</th><th>цена</th></tr>${DB.doorMSK.map(d=>`<tr><td>${d.w}</td><td>${d.v}</td><td>${d.p}</td></tr>`).join('')}</table>`;
+ if(s==='sla')return `<h3>Сроки доставки</h3><table><tr><th>Откуда</th><th>Куда</th><th>Срок</th></tr>${Object.entries(DB.sla).map(([k,v])=>`<tr><td>${k.split('-')[0]}</td><td>${k.split('-')[1]}</td><td>${v}</td></tr>`).join('')}</table>`;
+ return `<h3>Настройки</h3><div class='field'><label>Коэффициент укладки</label><input value='1.1'></div><div class='field'><label>Ставка оценочной стоимости</label><input value='0.2%'></div><div class='field'><label>Оценка без документов</label><input value='400 руб/кг'></div>`
+}
+function openModal(title){document.getElementById('modal').innerHTML=`<h3>${title}</h3><div class='field'><label>Название</label><input></div><div class='field'><label>Код</label><input></div><button class='btn' onclick='closeModal()'>Сохранить (демо)</button>`;document.getElementById('modalWrap').classList.add('open')}
+function closeModal(){document.getElementById('modalWrap').classList.remove('open')}
+document.getElementById('modalWrap').onclick=e=>{if(e.target.id==='modalWrap')closeModal()}
+function switchRole(role){state.role=role;document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.role===role));document.querySelectorAll('.role').forEach(r=>r.classList.toggle('active',r.id===role));if(role==='client'||role==='manager')setupCalc(role);if(role==='admin')renderAdmin()}
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>switchRole(t.dataset.role));
+setupCalc('client'); setupCalc('manager'); renderAdmin(); switchRole('client');
+</script>
+</body>
+</html>
